@@ -76,9 +76,15 @@ wire   [15:0]         rd_data         ;  //sdram_ctrl模块读数据
 wire                  sdram_init_done ;  //SDRAM初始化完成
 wire                  sys_init_done   ;  //系统初始化完成(sdram初始化+摄像头初始化)
 wire   [7:0]          img_y;
+wire   [7:0]          img_y2;
 wire   [7:0]          img_cb;
 wire   [7:0]          img_cr;
 wire   [15:0]         cmos_frame_data;
+wire   [10:0]         xpos;  //像素点横坐标
+wire   [10:0]         ypos;  //像素点纵坐标
+
+wire  					 isp_ae_en;
+
 //*****************************************************
 //**                    main code
 //*****************************************************
@@ -177,7 +183,18 @@ rgb2ycbcr u_rgb2ycbcr(
     .img_cb          (),
     .img_cr          ()
     );
-
+ov5640_isp_ae u_ov5640_isp_ae(
+	.clk           (cam_pclk),   // 模块驱动时钟
+   .rst_n         (rst_n) ,   // 复位信号	
+   .pre_frame_vsync   (cmos_frame_vsync),
+   .pre_frame_hsync   (cmos_frame_href),	
+	.pixel_xpos		(xpos),
+	.pixel_ypos    (ypos),
+	.pre_frame_de  (wr_en),
+	.img_y 		   (img_y),
+	.img_y2        (img_y2),
+	.post_frame_de (isp_ae_en)
+);
 //SDRAM 控制器顶层模块,封装成FIFO接口
 //SDRAM 控制器地址组成: {bank_addr[1:0],row_addr[12:0],col_addr[8:0]}
 sdram_top u_sdram_top(
@@ -187,8 +204,9 @@ sdram_top u_sdram_top(
                                                         
     //用户写端口                                        
     .wr_clk             (cam_pclk),                   //写端口FIFO: 写时钟
-    .wr_en              (wr_en),                      //写端口FIFO: 写使能
-    .wr_data            ({img_y[7:3],img_y[7:2],img_y[7:3]}),                    //写端口FIFO: 写数据
+    .wr_en              (isp_ae_en),                      //写端口FIFO: 写使能
+    //.wr_data            ({8'd255-img_y[7:3],8'd255-img_y[7:2],8'd255-img_y[7:3]}),                    //写端口FIFO: 写数据
+	 .wr_data            ({img_y2[7:3],img_y2[7:2],img_y2[7:3]}),                    //写端口FIFO: 写数据
     .wr_min_addr        (24'd0),                      //写SDRAM的起始地址
     .wr_max_addr        (CMOS_H_PIXEL*CMOS_V_PIXEL),  //写SDRAM的结束地址
     .wr_len             (10'd512),                    //写SDRAM时的数据突发长度
@@ -232,8 +250,8 @@ vga_driver u_vga_driver(
         
     .pixel_data         (rd_data), 
     .data_req           (rd_en),                      //请求像素点颜色数据输入
-    .pixel_xpos         (), 
-    .pixel_ypos         ()
+    .pixel_xpos         (xpos), 
+    .pixel_ypos         (ypos)
     ); 
 
 endmodule 
